@@ -1,0 +1,14 @@
+{
+  "name": "oape-ai-e2e",
+  "description": "AI-driven OpenShift operator development tools",
+  "owner": {
+    "name": "oape"
+  },
+  "plugins": [
+    {
+      "name": "oape",
+      "source": "./plugins/oape",
+      "description": "AI-driven OpenShift operator development tools"
+    }
+  ]
+}
