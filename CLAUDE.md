@@ -14,6 +14,7 @@ This project provides AI-driven tools for end-to-end feature development in Open
 |---------|---------|
 | `/oape:api-generate <EP-URL>` | Generate Go API types from Enhancement Proposal |
 | `/oape:api-implement <EP-URL>` | Generate controller code from Enhancement Proposal + API types |
+| `/oape:review <ticket_id> [base_ref]` | Production-grade code review against Jira requirements |
 
 ## Typical Workflow
 
