@@ -33,6 +33,10 @@ The review covers four key modules:
 - If `$2` (base_ref) is provided, use it
 - If NOT provided, use `origin/master`
 
+```bash
+BASE_REF="${2:-origin/master}"
+```
+
 ### Step 2: Fetch Context
 1. **Jira Issue**: Fetch the Jira issue details using curl:
    ```bash
