@@ -48,12 +48,36 @@ Reads an OpenShift enhancement proposal PR, extracts the required implementation
 /oape:api-implement https://github.com/openshift/enhancements/pull/1234
 ```
 
+---
+
+### `/oape:review`
+
+Performs a "Principal Engineer" level code review that verifies code changes against Jira requirements.
+
+**Usage:**
+```shell
+/oape:review OCPBUGS-12345
+/oape:review OCPBUGS-12345 origin/release-4.15
+```
+
+**What it does:**
+1. **Fetches Jira Issue** -- Retrieves the ticket details and acceptance criteria
+2. **Analyzes Git Diff** -- Gets changes between base ref and HEAD
+3. **Reviews Code** -- Applies four review modules:
+   - **Golang Logic & Safety**: Intent matching, execution traces, edge cases, context usage, concurrency, error handling
+   - **Bash Scripts**: Safety patterns, variable quoting, temp file handling
+   - **Operator Metadata (OLM)**: RBAC updates, finalizer handling
+   - **Build Consistency**: Generation drift detection
+4. **Generates Report** -- Returns structured JSON with verdict, issues, and fix prompts
+5. **Applies Fixes Automatically** -- When issues are found, invokes `implement-review-fixes.md` to apply the suggested code changes in severity order (CRITICAL first), then verifies the build still passes
+
 ## Prerequisites
 
 - **gh** (GitHub CLI) -- installed and authenticated
 - **go** -- Go toolchain
 - **git** -- Git
 - **make** -- Make (for api-implement)
+- **curl** -- For fetching Jira issues (for review)
 - Must be run from within an OpenShift operator repository
 
 ## Conventions Enforced
