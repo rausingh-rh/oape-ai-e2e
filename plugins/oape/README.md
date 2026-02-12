@@ -69,6 +69,7 @@ Performs a "Principal Engineer" level code review that verifies code changes aga
    - **Operator Metadata (OLM)**: RBAC updates, finalizer handling
    - **Build Consistency**: Generation drift detection
 4. **Generates Report** -- Returns structured JSON with verdict, issues, and fix prompts
+5. **Applies Fixes Automatically** -- When issues are found, invokes `implement-review-fixes.md` to apply the suggested code changes in severity order (CRITICAL first), then verifies the build still passes
 
 ## Prerequisites
 

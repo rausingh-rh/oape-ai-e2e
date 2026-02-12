@@ -13,7 +13,7 @@ oape:review
 
 ## Description
 
-The `jira:review` command performs a "Principal Engineer" level code review. It verifies that the code **actually solves the Jira problem** (Logic) and follows OpenShift safety standards.
+The `oape:review` command performs a "Principal Engineer" level code review. It verifies that the code **actually solves the Jira problem** (Logic) and follows OpenShift safety standards.
 
 The review covers four key modules:
 - **Golang Logic & Safety**: Intent matching, execution traces, edge cases, context usage, concurrency, error handling
@@ -94,9 +94,15 @@ Apply the following review criteria:
 ### Step 4: Generate Report
 Generate a structured JSON report based on the analysis.
 
+### Step 5: Apply Fixes Automatically
+
+After the report is generated, if the `issues` array is non-empty, automatically apply the suggested fixes by following the procedure in `implement-review-fixes.md`, passing the review report produced in Step 4 as input.
+
+This step is skipped when the verdict is `"Approved"` and there are no issues.
+
 ## Return Value
 
-Returns a JSON report with the following structure:
+Returns a JSON report with the following structure, followed by an automatic fix summary if issues were found:
 
 ```json
 {
@@ -121,6 +127,8 @@ Returns a JSON report with the following structure:
   ]
 }
 ```
+
+When issues are present, the fixes are applied automatically and a fix summary is appended (see `implement-review-fixes.md` for the summary format).
 
 ## Examples
 
