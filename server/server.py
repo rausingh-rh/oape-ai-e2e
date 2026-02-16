@@ -1,38 +1,34 @@
 """
-FastAPI server that exposes the /oape:api-implement Claude Code skill
-via the Claude Agent SDK.
+FastAPI server that exposes OAPE Claude Code skills via the Claude Agent SDK.
 
 Usage:
-    uvicorn api.server:app --reload
+    uvicorn server:app --reload
 
-Endpoint:
-    GET /api-implement?ep_url=<enhancement-pr-url>&cwd=<operator-repo-path>
+Endpoints:
+    GET  /                                    - Homepage with submission form
+    POST /submit                              - Submit a job (returns job_id)
+    GET  /status/{job_id}                     - Poll job status
+    GET  /stream/{job_id}                     - SSE stream of agent conversation
+    GET  /api/v1/oape-api-implement?ep_url=.. - Synchronous API-implement endpoint
 """
 
+import asyncio
 import json
-import logging
 import os
-import re
-import traceback
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Query
-from claude_agent_sdk import (
-    query,
-    ClaudeAgentOptions,
-    AssistantMessage,
-    ResultMessage,
-    TextBlock,
-)
+import re
+import uuid
 
+from fastapi import FastAPI, HTTPException, Query, Form
+from fastapi.responses import HTMLResponse
+from sse_starlette.sse import EventSourceResponse
 
-with open("config.json") as cf:
-    config_json_str = cf.read()
-CONFIGS = json.loads(config_json_str)
+from agent import run_agent, SUPPORTED_COMMANDS
 
 
 app = FastAPI(
     title="OAPE Operator Feature Developer",
-    description="Invokes the /oape:api-implement Claude Code command to generate "
+    description="Invokes OAPE Claude Code commands to generate "
     "controller/reconciler code from an OpenShift enhancement proposal.",
     version="0.1.0",
 )
@@ -41,21 +37,166 @@ EP_URL_PATTERN = re.compile(
     r"^https://github\.com/openshift/enhancements/pull/\d+/?$"
 )
 
-# Resolve the plugin directory (repo root) relative to this file.
-# The SDK expects the path to the plugin root (containing .claude-plugin/).
-PLUGIN_DIR = str(Path(__file__).resolve().parent.parent / "plugins" / "oape")
-print(PLUGIN_DIR)
-
-CONVERSATION_LOG = Path("/tmp/conversation.log")
-
-conv_logger = logging.getLogger("conversation")
-conv_logger.setLevel(logging.INFO)
-_handler = logging.FileHandler(CONVERSATION_LOG)
-_handler.setFormatter(logging.Formatter("%(message)s"))
-conv_logger.addHandler(_handler)
+# ---------------------------------------------------------------------------
+# In-memory job store
+# ---------------------------------------------------------------------------
+jobs: dict[str, dict] = {}
 
 
-@app.get("/api-implement")
+def _validate_ep_url(ep_url: str) -> None:
+    """Raise HTTPException if ep_url is not a valid enhancement PR URL."""
+    if not EP_URL_PATTERN.match(ep_url.rstrip("/")):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid enhancement PR URL. "
+            "Expected format: https://github.com/openshift/enhancements/pull/<number>",
+        )
+
+
+def _resolve_working_dir(cwd: str) -> str:
+    """Resolve and validate the working directory."""
+    working_dir = cwd if cwd else os.getcwd()
+    if not os.path.isdir(working_dir):
+        raise HTTPException(
+            status_code=400,
+            detail=f"The provided cwd is not a valid directory: {working_dir}",
+        )
+    return working_dir
+
+
+_HOMEPAGE_PATH = Path(__file__).parent / "homepage.html"
+HOMEPAGE_HTML = _HOMEPAGE_PATH.read_text()
+
+
+@app.get("/", response_class=HTMLResponse)
+async def homepage():
+    """Serve the submission form."""
+    return HOMEPAGE_HTML
+
+
+@app.post("/submit")
+async def submit_job(
+    ep_url: str = Form(...),
+    command: str = Form(default="api-implement"),
+    cwd: str = Form(default=""),
+):
+    """Validate inputs, create a background job, and return its ID."""
+    _validate_ep_url(ep_url)
+    if command not in SUPPORTED_COMMANDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported command: {command}. "
+            f"Supported: {', '.join(SUPPORTED_COMMANDS)}",
+        )
+    working_dir = _resolve_working_dir(cwd)
+
+    job_id = uuid.uuid4().hex[:12]
+    jobs[job_id] = {
+        "status": "running",
+        "ep_url": ep_url,
+        "cwd": working_dir,
+        "conversation": [],
+        "message_event": asyncio.Condition(),
+        "output": "",
+        "cost_usd": 0.0,
+        "error": None,
+    }
+    asyncio.create_task(_run_job(job_id, command, ep_url, working_dir))
+    return {"job_id": job_id}
+
+
+@app.get("/status/{job_id}")
+async def job_status(job_id: str):
+    """Return the current status of a job."""
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job = jobs[job_id]
+    return {
+        "status": job["status"],
+        "ep_url": job["ep_url"],
+        "cwd": job["cwd"],
+        "output": job.get("output", ""),
+        "cost_usd": job.get("cost_usd", 0.0),
+        "error": job.get("error"),
+        "message_count": len(job.get("conversation", [])),
+    }
+
+
+@app.get("/stream/{job_id}")
+async def stream_job(job_id: str):
+    """Stream job conversation messages via Server-Sent Events."""
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    async def event_generator():
+        cursor = 0
+        condition = jobs[job_id]["message_event"]
+
+        while True:
+            # Send any new messages since the cursor
+            conversation = jobs[job_id]["conversation"]
+            while cursor < len(conversation):
+                yield {
+                    "event": "message",
+                    "data": json.dumps(conversation[cursor], default=str),
+                }
+                cursor += 1
+
+            # Check if the job is complete
+            status = jobs[job_id]["status"]
+            if status != "running":
+                yield {
+                    "event": "complete",
+                    "data": json.dumps({
+                        "status": status,
+                        "output": jobs[job_id].get("output", ""),
+                        "cost_usd": jobs[job_id].get("cost_usd", 0.0),
+                        "error": jobs[job_id].get("error"),
+                    }),
+                }
+                return
+
+            # Wait for new messages or send keepalive on timeout
+            async with condition:
+                try:
+                    await asyncio.wait_for(condition.wait(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    yield {"event": "keepalive", "data": ""}
+
+    return EventSourceResponse(event_generator())
+
+
+async def _run_job(job_id: str, command: str, ep_url: str, working_dir: str):
+    """Run the Claude agent in the background and stream messages to the job store."""
+    condition = jobs[job_id]["message_event"]
+
+    loop = asyncio.get_running_loop()
+
+    def on_message(msg: dict) -> None:
+        jobs[job_id]["conversation"].append(msg)
+        loop.create_task(_notify(condition))
+
+    result = await run_agent(command, ep_url, working_dir, on_message=on_message)
+    if result.success:
+        jobs[job_id]["status"] = "success"
+        jobs[job_id]["output"] = result.output
+        jobs[job_id]["cost_usd"] = result.cost_usd
+    else:
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = result.error
+
+    # Final notification so SSE clients see the status change
+    async with condition:
+        condition.notify_all()
+
+
+async def _notify(condition: asyncio.Condition) -> None:
+    """Notify all waiters on the condition."""
+    async with condition:
+        condition.notify_all()
+
+
+@app.get("/api/v1/oape-api-implement")
 async def api_implement(
     ep_url: str = Query(
         ...,
@@ -68,81 +209,20 @@ async def api_implement(
         "will be generated. Defaults to the current working directory.",
     ),
 ):
-    """Generate controller/reconciler code from an enhancement proposal."""
+    """Generate controller/reconciler code from an enhancement proposal (synchronous)."""
+    _validate_ep_url(ep_url)
+    working_dir = _resolve_working_dir(cwd)
 
-    # --- Validate EP URL ---
-    if not EP_URL_PATTERN.match(ep_url.rstrip("/")):
+    result = await run_agent("api-implement", ep_url, working_dir)
+    if not result.success:
         raise HTTPException(
-            status_code=400,
-            detail=(
-                "Invalid enhancement PR URL. "
-                "Expected format: https://github.com/openshift/enhancements/pull/<number>"
-            ),
+            status_code=500, detail=f"Agent execution failed: {result.error}"
         )
-
-    # --- Resolve working directory ---
-    working_dir = cwd if cwd else os.getcwd()
-    if not os.path.isdir(working_dir):
-        raise HTTPException(
-            status_code=400,
-            detail=f"The provided cwd is not a valid directory: {working_dir}",
-        )
-
-    # --- Build SDK options ---
-    options = ClaudeAgentOptions(
-        system_prompt=(
-            "You are an OpenShift operator code generation assistant. "
-            "Execute the oape:api-implement plugin with the provided EP URL. "
-        ),
-        cwd=working_dir,
-        permission_mode="bypassPermissions",
-        allowed_tools=CONFIGS['claude_allowed_tools'],
-        plugins=[{"type": "local", "path": PLUGIN_DIR}],
-    )
-
-    # --- Run the agent ---
-    output_parts: list[str] = []
-    conversation: list[dict] = []
-    cost_usd = 0.0
-
-    def _log(role: str, content, **extra):
-        entry = {"role": role, "content": content, **extra}
-        conversation.append(entry)
-        conv_logger.info(f"[{role}] {content}")
-
-    conv_logger.info(f"\n{'=' * 60}\n[request] ep_url={ep_url}  cwd={working_dir}\n{'=' * 60}")
-
-    try:
-        async for message in query(
-            prompt=f"/oape:api-implement {ep_url}",
-            options=options,
-        ):
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        output_parts.append(block.text)
-                        _log("assistant", block.text)
-                    else:
-                        _log(f"assistant:{type(block).__name__}",
-                             json.dumps(getattr(block, "__dict__", str(block)), default=str))
-            elif isinstance(message, ResultMessage):
-                cost_usd = message.total_cost_usd
-                if message.result:
-                    output_parts.append(message.result)
-                _log("result", message.result, cost_usd=cost_usd)
-            else:
-                _log(type(message).__name__,
-                     json.dumps(getattr(message, "__dict__", str(message)), default=str))
-    except Exception as exc:
-        conv_logger.info(f"[error] {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Agent execution failed: {exc}")
-
-    conv_logger.info(f"[done] cost=${cost_usd:.4f}  parts={len(output_parts)}\n")
 
     return {
         "status": "success",
         "ep_url": ep_url,
         "cwd": working_dir,
-        "output": "\n".join(output_parts),
-        "cost_usd": cost_usd,
+        "output": result.output,
+        "cost_usd": result.cost_usd,
     }
