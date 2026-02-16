@@ -6,7 +6,7 @@ AI-driven Feature Development tools.
 
 Add the marketplace:
 ```shell
-/plugin marketplace add chiragkyal/oape-ai-e2e
+/plugin marketplace add shiftweek/oape-ai-e2e
 ```
 
 Install the plugin:
@@ -37,7 +37,7 @@ Cursor can discover the commands by symlinking this repo into your `~/.cursor/co
 
 ```bash
 mkdir -p ~/.cursor/commands
-git clone git@github.com:chiragkyal/oape-ai-e2e.git
+git clone git@github.com:shiftweek/oape-ai-e2e.git
 ln -s oape-ai-e2e ~/.cursor/commands/oape-ai-e2e
 ```
 
@@ -45,9 +45,17 @@ ln -s oape-ai-e2e ~/.cursor/commands/oape-ai-e2e
 
 | Plugin | Description | Commands |
 | ------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------- |
-| **[oape](plugins/oape/)** | AI-driven OpenShift operator development tools (includes ZTWIM test generator) | `/oape:api-generate`, `/oape:api-generate-tests`, `/oape:api-implement`, `/oape:ztwim-generate-all`, `/oape:ztwim-generate-from-pr`, `/oape:ztwim-generate-execution-steps`, `/oape:ztwim-generate-e2e-from-pr` |
+| **[oape](plugins/oape/)** | AI-driven OpenShift operator development tools | `/oape:init`, `/oape:api-generate`, `/oape:api-generate-tests`, `/oape:api-implement`, `/oape:e2e-generate`, `/oape:review`, `/oape:implement-review-fixes` |
 
 ## Commands
+
+### `/oape:init` -- Clone an Operator Repository
+
+Clones an allowed OpenShift operator repository by short name into the current directory.
+
+```shell
+/oape:init cert-manager-operator
+```
 
 ### `/oape:api-generate` -- Generate API Types from Enhancement Proposal
 
@@ -73,31 +81,48 @@ Reads an OpenShift enhancement proposal PR, extracts the required implementation
 /oape:api-implement https://github.com/openshift/enhancements/pull/1234
 ```
 
+### `/oape:e2e-generate` -- Generate E2E Test Artifacts
+
+Generates e2e test artifacts by discovering the repo structure and analyzing the git diff from a base branch.
+
+```shell
+/oape:e2e-generate main
+```
+
+### `/oape:review` -- Code Review Against Jira Requirements
+
+Performs a production-grade code review that verifies code changes against Jira requirements.
+
+```shell
+/oape:review OCPBUGS-12345
+/oape:review OCPBUGS-12345 origin/release-4.15
+```
+
+### `/oape:implement-review-fixes` -- Apply Fixes from Review Report
+
+Automatically applies code fixes from a review report.
+
+```shell
+/oape:implement-review-fixes <report-path>
+```
+
 **Typical workflow:**
 ```shell
-# Step 1: Generate API types
+# Step 1: Clone the operator repository
+/oape:init cert-manager-operator
+
+# Step 2: Generate API types
 /oape:api-generate https://github.com/openshift/enhancements/pull/1234
 
-# Step 2: Generate integration tests
+# Step 3: Generate integration tests
 /oape:api-generate-tests api/v1alpha1/
 
-# Step 3: Generate controller implementation
+# Step 4: Generate controller implementation
 /oape:api-implement https://github.com/openshift/enhancements/pull/1234
+
+# Step 5: Generate e2e tests for your changes
+/oape:e2e-generate main
 ```
-
-### ZTWIM Test Generator (inside oape)
-
-Generates test scenarios, step-by-step execution with `oc` commands, and e2e Go code for [openshift/zero-trust-workload-identity-manager](https://github.com/openshift/zero-trust-workload-identity-manager) PRs. See [plugins/oape/ztwim-test-generator/README.md](plugins/oape/ztwim-test-generator/README.md) for full docs.
-
-**Single command (all artifacts):**
-
-```shell
-/oape:ztwim-generate-all https://github.com/openshift/zero-trust-workload-identity-manager/pull/92
-```
-
-Writes `test-cases.md`, `execution-steps.md`, `<prno>_test_e2e.go`, and `e2e-suggestions.md` into `output/ztwim_pr_<number>/`.
-
-**Individual commands:** `/oape:ztwim-generate-from-pr`, `/oape:ztwim-generate-execution-steps`, `/oape:ztwim-generate-e2e-from-pr` (each with a PR URL).
 
 ### Adding a New Command
 
