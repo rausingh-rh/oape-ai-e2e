@@ -43,9 +43,9 @@ ln -s oape-ai-e2e ~/.cursor/commands/oape-ai-e2e
 
 ## Available Plugins
 
-| Plugin                    | Description                                    | Commands                                                                    |
+| Plugin | Description | Commands |
 | ------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------- |
-| **[oape](plugins/oape/)** | AI-driven OpenShift operator development tools | `/oape:api-generate`, `/oape:api-generate-tests`, `/oape:api-implement` |
+| **[oape](plugins/oape/)** | AI-driven OpenShift operator development tools (includes ZTWIM test generator) | `/oape:api-generate`, `/oape:api-generate-tests`, `/oape:api-implement`, `/oape:ztwim-generate-all`, `/oape:ztwim-generate-from-pr`, `/oape:ztwim-generate-execution-steps`, `/oape:ztwim-generate-e2e-from-pr` |
 
 ## Commands
 
@@ -85,6 +85,20 @@ Reads an OpenShift enhancement proposal PR, extracts the required implementation
 /oape:api-implement https://github.com/openshift/enhancements/pull/1234
 ```
 
+### ZTWIM Test Generator (inside oape)
+
+Generates test scenarios, step-by-step execution with `oc` commands, and e2e Go code for [openshift/zero-trust-workload-identity-manager](https://github.com/openshift/zero-trust-workload-identity-manager) PRs. See [plugins/oape/ztwim-test-generator/README.md](plugins/oape/ztwim-test-generator/README.md) for full docs.
+
+**Single command (all artifacts):**
+
+```shell
+/oape:ztwim-generate-all https://github.com/openshift/zero-trust-workload-identity-manager/pull/92
+```
+
+Writes `test-cases.md`, `execution-steps.md`, `<prno>_test_e2e.go`, and `e2e-suggestions.md` into `output/ztwim_pr_<number>/`.
+
+**Individual commands:** `/oape:ztwim-generate-from-pr`, `/oape:ztwim-generate-execution-steps`, `/oape:ztwim-generate-e2e-from-pr` (each with a PR URL).
+
 ### Adding a New Command
 
 1. Add a new markdown file under `plugins/oape/commands/`
@@ -95,6 +109,7 @@ Reads an OpenShift enhancement proposal PR, extracts the required implementation
 
 ```text
 plugins/oape/
+├── ztwim-test-generator/   # ZTWIM fixtures, docs, skills (commands are in commands/)
 ├── .claude-plugin/
 │   └── plugin.json           # Required: plugin metadata
 ├── commands/

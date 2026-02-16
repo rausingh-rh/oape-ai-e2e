@@ -87,6 +87,21 @@ Performs a "Principal Engineer" level code review that verifies code changes aga
 4. **Generates Report** -- Returns structured JSON with verdict, issues, and fix prompts
 5. **Applies Fixes Automatically** -- When issues are found, invokes `implement-review-fixes.md` to apply the suggested code changes in severity order (CRITICAL first), then verifies the build still passes
 
+---
+
+### ZTWIM Test Generator (ZTWIM operator PRs only)
+
+Generates test scenarios, execution steps with `oc` commands, and e2e Go code for [openshift/zero-trust-workload-identity-manager](https://github.com/openshift/zero-trust-workload-identity-manager) PRs. Fixtures and docs live under `ztwim-test-generator/`; commands are exposed as `/oape:ztwim-*`.
+
+| Command | Description |
+|---------|-------------|
+| **`/oape:ztwim-generate-all <pr-url>`** | Generate all artifacts in one run: `test-cases.md`, `execution-steps.md`, `<prno>_test_e2e.go`, `e2e-suggestions.md` in `output/ztwim_pr_<number>/`. |
+| `/oape:ztwim-generate-from-pr <pr-url>` | Generate only test scenarios (`test-cases.md`). |
+| `/oape:ztwim-generate-execution-steps <pr-url>` | Generate only execution steps (`execution-steps.md`). |
+| `/oape:ztwim-generate-e2e-from-pr <pr-url>` | Generate only e2e Go code and suggestions. |
+
+See [ztwim-test-generator/README.md](ztwim-test-generator/README.md) for fixtures and usage.
+
 ## Prerequisites
 
 - **gh** (GitHub CLI) -- installed and authenticated
