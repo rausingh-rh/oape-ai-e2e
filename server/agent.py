@@ -179,6 +179,10 @@ Branch: `feature/e2e-tests-<ep-number>`
 5. When creating PRs, use `gh pr create` with descriptive titles and bodies
 6. Report the PR URL after each PR is created
 
+## CRITICAL: Fully Autonomous Execution
+
+You MUST execute ALL THREE PRs in a single uninterrupted run. Do NOT ask the user for confirmation, approval, or permission between PRs. Do NOT pause to ask "should I proceed?" or "shall I continue?". After completing each PR, immediately move on to the next one without any interaction. This is a fully automated pipeline — complete PR #1, then PR #2, then PR #3, all in one go.
+
 ## Important Notes
 
 - Extract the EP number from the URL (e.g., 1234 from .../pull/1234) for branch naming
@@ -187,7 +191,7 @@ Branch: `feature/e2e-tests-<ep-number>`
 - If the repository is already cloned, the init command will use the existing directory
 - Ensure each PR has a clear description of what was generated
 
-Begin by executing PR #1 workflow. After each PR is created, proceed to the next one.
+Begin now. Execute PR #1, then immediately PR #2, then immediately PR #3 — all without stopping or asking for user input.
 """
 
 
@@ -226,6 +230,10 @@ async def run_workflow(
             "Follow the workflow instructions precisely and execute each step. "
             "Use the OAPE plugins to generate code, tests, and reviews. "
             "Create git branches, commits, and pull requests as instructed. "
+            "IMPORTANT: This is a fully automated pipeline. Execute ALL steps "
+            "and ALL PRs without pausing, asking for confirmation, or waiting "
+            "for user input. Never ask 'should I proceed?' or 'shall I continue?'. "
+            "Complete the entire workflow autonomously in one run."
         ),
         cwd=working_dir,
         permission_mode="bypassPermissions",
